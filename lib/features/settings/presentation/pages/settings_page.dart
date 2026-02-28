@@ -82,18 +82,58 @@ class SettingsPage extends StatelessWidget {
                       if (authState.isSignedIn)
                         Column(
                           children: [
+                            if (authState.displayName != null && authState.displayName!.isNotEmpty)
+                              Text(
+                                authState.displayName!,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            if (authState.displayName != null && authState.displayName!.isNotEmpty)
+                              const SizedBox(height: 2),
                             Text(
                               authState.userEmail ?? 'User',
                               style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.black54,
                               ),
                             ),
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: () {
-                                authState.signOut();
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext dialogContext) {
+                                    return AlertDialog(
+                                      title: const Text('Log Out'),
+                                      content: const Text('Are you sure you want to log out?'),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(dialogContext).pop();
+                                          },
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(dialogContext).pop();
+                                            authState.signOut();
+                                          },
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.redAccent,
+                                          ),
+                                          child: const Text('Log-out'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
                               },
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.redAccent,

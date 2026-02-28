@@ -14,6 +14,18 @@ class AtmosApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       initialRoute: AppRoutes.splash,
       routes: AppRoutes.routes,
+      builder: (context, child) {
+        final data = MediaQuery.of(context);
+        return MediaQuery(
+          // Fix for "ViewInsets cannot be negative" assertion failure on Flutter Web
+          data: data.copyWith(
+            viewInsets: data.viewInsets.copyWith(
+              bottom: data.viewInsets.bottom.clamp(0.0, double.infinity),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
   }
 }

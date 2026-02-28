@@ -1,4 +1,9 @@
+import 'package:atmos_frontend/core/auth/auth_state.dart';
+import 'package:atmos_frontend/core/auth/auth_error_messages.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:atmos_frontend/core/config/api_config.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -16,6 +21,7 @@ class _SignUpPageState extends State<SignUpPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -26,24 +32,48 @@ class _SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
-  void _signUp() {
+  Future<void> _signUp() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      // TODO: Integrate with Firebase/backend auth
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        final response = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/auth/signup'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': _emailController.text.trim(),
+            'password': _passwordController.text,
+            'displayName': _nameController.text.trim(),
+          }),
+        );
+
         if (!mounted) return;
         setState(() => _isLoading = false);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully! Please sign in.'),
-            backgroundColor: Color(0xFF29B6F6),
-          ),
-        );
-
-        Navigator.pushReplacementNamed(context, '/signin');
-      });
+        if (response.statusCode == 200) {
+          // Pre-fill display name so Settings shows it right after sign-in
+          AuthState().signIn(
+            _emailController.text.trim(),
+            displayName: _nameController.text.trim(),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully! Please sign in.'),
+              backgroundColor: Color(0xFF29B6F6),
+            ),
+          );
+          Navigator.pushReplacementNamed(context, '/signin');
+        } else {
+          final raw = jsonDecode(response.body)['detail'] as String? ?? '';
+          setState(() => _errorMessage = friendlyAuthError(raw));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Could not connect to the server. Check your internet connection.';
+        });
+      }
     }
   }
 
@@ -51,6 +81,7 @@ class _SignUpPageState extends State<SignUpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -59,9 +90,8 @@ class _SignUpPageState extends State<SignUpPage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
+      body: Center(
+        child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Form(
               key: _formKey,
@@ -103,10 +133,42 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 40),
 
+                  // Inline error banner
+                  if (_errorMessage != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFEF9A9A)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Color(0xFFC62828),
+                                fontSize: 13.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Full Name Field
                   TextFormField(
                     controller: _nameController,
                     textCapitalization: TextCapitalization.words,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Full Name',
                       prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
@@ -134,6 +196,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Email Address',
                       prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
@@ -165,6 +228,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
@@ -196,8 +260,8 @@ class _SignUpPageState extends State<SignUpPage> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter a password';
                       }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
                       }
                       return null;
                     },
@@ -311,7 +375,6 @@ class _SignUpPageState extends State<SignUpPage> {
             ),
           ),
         ),
-      ),
     );
   }
 }

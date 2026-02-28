@@ -24,9 +24,9 @@ class _SplashPageState extends State<SplashPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
-      body: SafeArea(
-        child: Center(
-          child: Column(
+      resizeToAvoidBottomInset: false,
+      body: Center(
+        child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
 
@@ -83,7 +83,6 @@ class _SplashPageState extends State<SplashPage> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }

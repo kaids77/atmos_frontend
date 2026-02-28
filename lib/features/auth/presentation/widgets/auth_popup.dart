@@ -1,5 +1,9 @@
 import 'package:atmos_frontend/core/auth/auth_state.dart';
+import 'package:atmos_frontend/core/auth/auth_error_messages.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:atmos_frontend/core/config/api_config.dart';
 
 /// Shows a popup sign-in dialog. Returns true if sign-in was successful.
 Future<bool> showSignInPopup(BuildContext context) async {
@@ -24,6 +28,7 @@ class _SignInPopupDialogState extends State<_SignInPopupDialog> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -32,17 +37,57 @@ class _SignInPopupDialogState extends State<_SignInPopupDialog> {
     super.dispose();
   }
 
-  void _signIn() {
+  Future<void> _signIn() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      // TODO: Integrate with Firebase/backend auth
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        final response = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/auth/signin'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': _emailController.text.trim(),
+            'password': _passwordController.text,
+          }),
+        );
+
         if (!mounted) return;
         setState(() => _isLoading = false);
-        AuthState().signIn(_emailController.text.trim());
-        Navigator.pop(context, true); // Return success
-      });
+
+        if (response.statusCode == 200) {
+          final responseData = jsonDecode(response.body)['data'] as Map<String, dynamic>? ?? {};
+          final emailInput = _emailController.text.trim();
+          final firebaseEmail = responseData['email'] as String? ?? '';
+
+          // Case-sensitive validation
+          if (firebaseEmail.isNotEmpty && emailInput != firebaseEmail) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = 'No account found with this email, or the password is incorrect.';
+            });
+            return;
+          }
+
+          final isAdmin = emailInput == 'admin@atmos.com';
+
+          if (isAdmin) {
+            Navigator.pushNamedAndRemoveUntil(context, '/admin', (route) => false);
+          } else {
+            final displayName = responseData['displayName'] as String? ?? '';
+            AuthState().signIn(emailInput, displayName: displayName);
+            Navigator.pop(context, true); // Return success
+          }
+        } else {
+          final raw = jsonDecode(response.body)['detail'] as String? ?? '';
+          setState(() => _errorMessage = friendlyAuthError(raw));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Could not connect to the server. Check your internet connection.';
+        });
+      }
     }
   }
 
@@ -113,10 +158,42 @@ class _SignInPopupDialogState extends State<_SignInPopupDialog> {
                   ),
                   const SizedBox(height: 28),
 
+                  // Inline error banner
+                  if (_errorMessage != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFEF9A9A)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Color(0xFFC62828),
+                                fontSize: 12.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Email Field
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Email Address',
                       prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
@@ -148,6 +225,7 @@ class _SignInPopupDialogState extends State<_SignInPopupDialog> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
@@ -179,8 +257,8 @@ class _SignInPopupDialogState extends State<_SignInPopupDialog> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your password';
                       }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
                       }
                       return null;
                     },
@@ -296,6 +374,7 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -306,25 +385,48 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
     super.dispose();
   }
 
-  void _signUp() {
+  Future<void> _signUp() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      // TODO: Integrate with Firebase/backend auth
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        final response = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/auth/signup'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': _emailController.text.trim(),
+            'password': _passwordController.text,
+            'displayName': _nameController.text.trim(),
+          }),
+        );
+
         if (!mounted) return;
         setState(() => _isLoading = false);
 
-        // Close sign-up popup and open sign-in popup
-        Navigator.pop(context, false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully! Please sign in.'),
-            backgroundColor: Color(0xFF29B6F6),
-          ),
-        );
-        showSignInPopup(context);
-      });
+        if (response.statusCode == 200) {
+          AuthState().signIn(
+            _emailController.text.trim(),
+            displayName: _nameController.text.trim(),
+          );
+          Navigator.pop(context, false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully! Please sign in.'),
+              backgroundColor: Color(0xFF29B6F6),
+            ),
+          );
+          showSignInPopup(context);
+        } else {
+          final raw = jsonDecode(response.body)['detail'] as String? ?? '';
+          setState(() => _errorMessage = friendlyAuthError(raw));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Could not connect to the server. Check your internet connection.';
+        });
+      }
     }
   }
 
@@ -395,10 +497,42 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
                   ),
                   const SizedBox(height: 28),
 
+                  // Inline error banner
+                  if (_errorMessage != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFEF9A9A)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Color(0xFFC62828),
+                                fontSize: 12.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Full Name Field
                   TextFormField(
                     controller: _nameController,
                     textCapitalization: TextCapitalization.words,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Full Name',
                       prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
@@ -426,6 +560,7 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Email Address',
                       prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
@@ -457,6 +592,7 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: InputDecoration(
                       hintText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
@@ -488,8 +624,8 @@ class _SignUpPopupDialogState extends State<_SignUpPopupDialog> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter a password';
                       }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
+                      if (value.length < 8) {
+                        return 'Password must be at least 8 characters';
                       }
                       return null;
                     },
