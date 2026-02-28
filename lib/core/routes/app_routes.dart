@@ -8,6 +8,8 @@ import '../../features/ai_assistant/presentation/pages/ai_page.dart';
 import '../../features/news/presentation/pages/news_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 
+import '../../features/admin/presentation/pages/admin_dashboard.dart';
+
 class AppRoutes {
   static const splash = '/';
   static const signin = '/signin';
@@ -17,6 +19,7 @@ class AppRoutes {
   static const ai = '/ai';
   static const news = '/news';
   static const settings = '/settings';
+  static const admin = '/admin';
 
   static Map<String, WidgetBuilder> routes = {
     splash: (context) => const SplashPage(),
@@ -27,5 +30,6 @@ class AppRoutes {
     ai: (context) => const AiPage(),
     news: (context) => const NewsPage(),
     settings: (context) => const SettingsPage(),
+    admin: (context) => const AdminDashboard(),
   };
 }
