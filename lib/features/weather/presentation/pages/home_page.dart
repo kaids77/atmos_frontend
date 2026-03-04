@@ -1,5 +1,8 @@
 import 'package:atmos_frontend/core/auth/auth_state.dart';
 import 'package:atmos_frontend/features/auth/presentation/widgets/auth_popup.dart';
+import 'package:atmos_frontend/features/weather/data/weather_api_client.dart';
+import 'package:atmos_frontend/features/weather/data/weather_repository.dart';
+import 'package:atmos_frontend/features/weather/domain/weather_models.dart';
 import 'package:flutter/material.dart';
 
 class LandingPage extends StatefulWidget {
@@ -21,6 +24,183 @@ class _LandingPageState extends State<LandingPage> {
     'Settings',
   ];
 
+  // ── Weather state ──
+  final WeatherApiClient _apiClient = WeatherApiClient();
+  final WeatherRepository _repository = WeatherRepository();
+  final TextEditingController _searchController = TextEditingController();
+
+  List<String> _searchHistory = [];
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  // Detail view state
+  bool _showingDetail = false;
+  CurrentWeather? _currentWeather;
+  List<ForecastDay> _forecast = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final history = await _repository.loadSearchHistory();
+    if (mounted) {
+      setState(() {
+        _searchHistory = history;
+      });
+    }
+  }
+
+  Future<void> _searchCity(String city) async {
+    if (city.trim().isEmpty) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final weather = await _apiClient.fetchCurrentWeather(city.trim());
+      final forecast = await _apiClient.fetchForecast(city.trim());
+      await _repository.addCity(weather.cityName);
+      await _loadHistory();
+      if (mounted) {
+        setState(() {
+          _currentWeather = weather;
+          _forecast = forecast;
+          _showingDetail = true;
+          _isLoading = false;
+          _searchController.clear();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              e.toString().contains('City not found')
+                  ? 'City not found. Please try another name.'
+                  : 'Failed to fetch weather data. Check your connection.';
+        });
+      }
+    }
+  }
+
+  Future<void> _openCityWeather(String city) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final weather = await _apiClient.fetchCurrentWeather(city);
+      final forecast = await _apiClient.fetchForecast(city);
+      // Move city to top
+      await _repository.addCity(weather.cityName);
+      await _loadHistory();
+      if (mounted) {
+        setState(() {
+          _currentWeather = weather;
+          _forecast = forecast;
+          _showingDetail = true;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load weather for $city.';
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteCity(String city) async {
+    await _repository.removeCity(city);
+    await _loadHistory();
+  }
+
+  void _backToHistory() {
+    setState(() {
+      _showingDetail = false;
+      _currentWeather = null;
+      _forecast = [];
+      _errorMessage = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ── Icon helper ──
+  IconData _weatherIcon(String condition) {
+    switch (condition.toLowerCase()) {
+      case 'thunderstorm':
+        return Icons.thunderstorm;
+      case 'drizzle':
+        return Icons.grain;
+      case 'rain':
+        return Icons.water_drop;
+      case 'snow':
+        return Icons.ac_unit;
+      case 'clear':
+        return Icons.wb_sunny;
+      case 'clouds':
+        return Icons.cloud;
+      case 'mist':
+      case 'smoke':
+      case 'haze':
+      case 'dust':
+      case 'fog':
+      case 'sand':
+      case 'ash':
+      case 'squall':
+      case 'tornado':
+        return Icons.foggy;
+      default:
+        return Icons.wb_cloudy;
+    }
+  }
+
+  Color _weatherIconColor(String condition) {
+    switch (condition.toLowerCase()) {
+      case 'thunderstorm':
+        return const Color(0xFF7E57C2);
+      case 'drizzle':
+      case 'rain':
+        return const Color(0xFF42A5F5);
+      case 'snow':
+        return const Color(0xFF90CAF9);
+      case 'clear':
+        return const Color(0xFFFFA726);
+      case 'clouds':
+        return const Color(0xFF78909C);
+      default:
+        return const Color(0xFF78909C);
+    }
+  }
+
+  List<Color> _weatherGradient(String condition) {
+    switch (condition.toLowerCase()) {
+      case 'thunderstorm':
+        return [const Color(0xFF5C6BC0), const Color(0xFF7E57C2)];
+      case 'drizzle':
+      case 'rain':
+        return [const Color(0xFF42A5F5), const Color(0xFF1565C0)];
+      case 'snow':
+        return [const Color(0xFF90CAF9), const Color(0xFFBBDEFB)];
+      case 'clear':
+        return [const Color(0xFFFFA726), const Color(0xFFFF7043)];
+      case 'clouds':
+        return [const Color(0xFF78909C), const Color(0xFF90A4AE)];
+      default:
+        return [const Color(0xFF29B6F6), const Color(0xFF4FC3F7)];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -33,9 +213,12 @@ class _LandingPageState extends State<LandingPage> {
         title: Row(
           children: [
             if (_currentIndex == 2)
-              const Icon(Icons.cloud_circle, color: Color(0xFF29B6F6), size: 28),
-            if (_currentIndex == 2)
-              const SizedBox(width: 8),
+              const Icon(
+                Icons.cloud_circle,
+                color: Color(0xFF29B6F6),
+                size: 28,
+              ),
+            if (_currentIndex == 2) const SizedBox(width: 8),
             Text(
               _tabTitles[_currentIndex],
               style: const TextStyle(
@@ -93,45 +276,34 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _onTabTapped(int index) {
-    // Planner (0) requires authentication via popup, then push full page
     if (index == 0) {
       if (!AuthState().isSignedIn) {
         showSignInPopup(context).then((success) {
           if (!mounted) return;
-          if (success) {
-            Navigator.pushNamed(context, '/planner');
-          }
+          if (success) Navigator.pushNamed(context, '/planner');
         });
       } else {
         Navigator.pushNamed(context, '/planner');
       }
       return;
     }
-
-    // AI (1) requires authentication via popup, then push full page
     if (index == 1) {
       if (!AuthState().isSignedIn) {
         showSignInPopup(context).then((success) {
           if (!mounted) return;
-          if (success) {
-            Navigator.pushNamed(context, '/ai');
-          }
+          if (success) Navigator.pushNamed(context, '/ai');
         });
       } else {
         Navigator.pushNamed(context, '/ai');
       }
       return;
     }
-
-    // Home (2) is the only inline content
     if (index == 2) {
       setState(() {
         _currentIndex = index;
       });
       return;
     }
-
-    // News (3) and Settings (4) open as full pages with back button
     if (index == 3) {
       Navigator.pushNamed(context, '/news');
       return;
@@ -143,19 +315,19 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   Widget _buildBody() {
-    // Only index 2 (Home) has inline body content now
-    return _buildWeatherContent();
+    return _showingDetail ? _buildWeatherDetail() : _buildSearchHistoryView();
   }
 
-  /// The actual weather/home content matching the design.
-  Widget _buildWeatherContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Search Bar
-          Row(
+  // ════════════════════════════════════════════════════════════
+  // Search History View
+  // ════════════════════════════════════════════════════════════
+  Widget _buildSearchHistoryView() {
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: Row(
             children: [
               Expanded(
                 child: Container(
@@ -165,14 +337,16 @@ class _LandingPageState extends State<LandingPage> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFE0E0E0)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      SizedBox(width: 12),
-                      Icon(Icons.search, color: Colors.grey, size: 22),
-                      SizedBox(width: 8),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.search, color: Colors.grey, size: 22),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
-                          decoration: InputDecoration(
+                          controller: _searchController,
+                          onSubmitted: _searchCity,
+                          decoration: const InputDecoration(
                             hintText: 'Search location...',
                             hintStyle: TextStyle(
                               color: Colors.grey,
@@ -192,7 +366,7 @@ class _LandingPageState extends State<LandingPage> {
               SizedBox(
                 height: 44,
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () => _searchCity(_searchController.text),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF29B6F6),
                     foregroundColor: Colors.white,
@@ -213,20 +387,254 @@ class _LandingPageState extends State<LandingPage> {
               ),
             ],
           ),
+        ),
 
-          const SizedBox(height: 24),
+        // Loading / Error
+        if (_isLoading)
+          const Padding(
+            padding: EdgeInsets.only(top: 32),
+            child: CircularProgressIndicator(color: Color(0xFF29B6F6)),
+          ),
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red.shade400, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-          // Today's Weather Card
+        const SizedBox(height: 20),
+
+        // History header
+        if (_searchHistory.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Saved Locations',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ),
+        if (_searchHistory.isNotEmpty) const SizedBox(height: 8),
+
+        // City list
+        Expanded(
+          child: _searchHistory.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.cloud_queue, size: 64, color: Colors.grey.shade300),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No locations yet',
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Search for a city to see the weather',
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: _searchHistory.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final city = _searchHistory[index];
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => _openCityWeather(city),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F7FA),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFE8ECF0),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                color: Color(0xFF29B6F6),
+                                size: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  city,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.grey,
+                                  size: 20,
+                                ),
+                                onSelected: (value) {
+                                  if (value == 'delete') {
+                                    _deleteCity(city);
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.delete_outline,
+                                          color: Colors.red,
+                                          size: 20,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Delete',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // Weather Detail View
+  // ════════════════════════════════════════════════════════════
+  Widget _buildWeatherDetail() {
+    final weather = _currentWeather!;
+    final gradient = _weatherGradient(weather.mainCondition);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Back button
+          GestureDetector(
+            onTap: _backToHistory,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F0F0),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.arrow_back_ios, size: 16, color: Colors.black54),
+                  SizedBox(width: 4),
+                  Text(
+                    'Back',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // City name
+          Text(
+            weather.cityName,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          Text(
+            weather.description[0].toUpperCase() +
+                weather.description.substring(1),
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Current Weather Card
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF29B6F6), Color(0xFF4FC3F7)],
+              gradient: LinearGradient(
+                colors: gradient,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: gradient[0].withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -245,7 +653,7 @@ class _LandingPageState extends State<LandingPage> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
-                          'Today',
+                          'Now',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -254,70 +662,167 @@ class _LandingPageState extends State<LandingPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
-                        '28°C',
-                        style: TextStyle(
+                      Text(
+                        '${weather.temp.round()}°C',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 48,
                           fontWeight: FontWeight.bold,
                           height: 1,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Partly Cloudy',
+                      const SizedBox(height: 4),
+                      Text(
+                        'Feels like ${weather.feelsLike.round()}°C',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 14,
                         ),
                       ),
                     ],
                   ),
                 ),
                 Icon(
-                  Icons.cloud,
+                  _weatherIcon(weather.mainCondition),
                   size: 80,
-                  color: Colors.white.withValues(alpha: 0.85),
+                  color: Colors.white.withValues(alpha: 0.9),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
 
-          // 5-Day Forecast Header
-          const Text(
-            '5-Day Forecast',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          // Details Grid
+          Row(
+            children: [
+              Expanded(
+                child: _infoCard(
+                  Icons.water_drop,
+                  'Humidity',
+                  '${weather.humidity}%',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _infoCard(
+                  Icons.air,
+                  'Wind',
+                  '${weather.windSpeed} m/s',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _infoCard(
+                  Icons.compress,
+                  'Pressure',
+                  '${weather.pressure} hPa',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _infoCard(
+                  Icons.visibility,
+                  'Visibility',
+                  '${(weather.visibility / 1000).toStringAsFixed(1)} km',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _infoCard(
+                  Icons.thermostat,
+                  'Min / Max',
+                  '${weather.tempMin.round()}° / ${weather.tempMax.round()}°',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _infoCard(
+                  Icons.cloud,
+                  'Clouds',
+                  '${weather.clouds}%',
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
 
-          // Forecast List
-          _buildForecastRow('Mon', Icons.wb_sunny, '28°', '20°'),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          _buildForecastRow('Tue', Icons.cloud, '25°', '19°'),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          _buildForecastRow('Wed', Icons.grain, '22°', '18°'),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          _buildForecastRow('Thu', Icons.wb_sunny, '30°', '22°'),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          _buildForecastRow('Fri', Icons.thunderstorm, '24°', '17°'),
+          // 5-Day Forecast
+          if (_forecast.isNotEmpty) ...[
+            const Text(
+              '5-Day Forecast',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ..._forecast.map((day) => Column(
+                  children: [
+                    _buildForecastRow(day),
+                    const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                  ],
+                )),
+          ],
+
+          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildForecastRow(
-    String day,
-    IconData icon,
-    String high,
-    String low,
-  ) {
+  Widget _infoCard(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7FA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: const Color(0xFF29B6F6)),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForecastRow(ForecastDay day) {
+    final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dayName = dayNames[day.date.weekday - 1];
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 14),
       child: Row(
@@ -325,7 +830,7 @@ class _LandingPageState extends State<LandingPage> {
           SizedBox(
             width: 50,
             child: Text(
-              day,
+              dayName,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -334,14 +839,15 @@ class _LandingPageState extends State<LandingPage> {
             ),
           ),
           const Spacer(),
-          Icon(icon, color: const Color(0xFF29B6F6), size: 24),
+          Icon(
+            _weatherIcon(day.mainCondition),
+            color: _weatherIconColor(day.mainCondition),
+            size: 24,
+          ),
           const Spacer(),
           Text(
-            '$high / $low',
-            style: const TextStyle(
-              fontSize: 15,
-              color: Colors.black54,
-            ),
+            '${day.tempMax.round()}° / ${day.tempMin.round()}°',
+            style: const TextStyle(fontSize: 15, color: Colors.black54),
           ),
         ],
       ),
