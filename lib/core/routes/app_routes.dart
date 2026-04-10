@@ -8,7 +8,7 @@ import '../../features/ai_assistant/presentation/pages/ai_page.dart';
 import '../../features/news/presentation/pages/news_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 
-import '../../features/admin/presentation/pages/admin_dashboard.dart';
+import '../../features/admin/presentation/pages/admin_landing_page.dart';
 
 class AppRoutes {
   static const splash = '/';
@@ -30,6 +30,6 @@ class AppRoutes {
     ai: (context) => const AiPage(),
     news: (context) => const NewsPage(),
     settings: (context) => const SettingsPage(),
-    admin: (context) => const AdminDashboard(),
+    admin: (context) => const AdminLandingPage(),
   };
 }
