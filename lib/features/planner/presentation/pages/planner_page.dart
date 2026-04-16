@@ -17,6 +17,9 @@ class _PlannerPageState extends State<PlannerPage> {
   List<PlannerBoard> _boards = [];
   bool _loadingBoards = true;
 
+  // Per-board pending task counts (non-done)
+  Map<String, int> _pendingCountMap = {};
+
   // Board detail state
   PlannerBoard? _selectedBoard;
   List<PlannerTask> _tasks = [];
@@ -40,8 +43,24 @@ class _PlannerPageState extends State<PlannerPage> {
     try {
       final boards = await _repository.getBoards(_userId);
       if (mounted) setState(() { _boards = boards; _loadingBoards = false; });
+      _fetchPendingCounts();
     } catch (_) {
       if (mounted) setState(() { _error = 'Failed to load plans.'; _loadingBoards = false; });
+    }
+  }
+
+  Future<void> _fetchPendingCounts() async {
+    try {
+      final allTasks = await _repository.getTasks(_userId);
+      final Map<String, int> counts = {};
+      for (final task in allTasks) {
+        if (task.status != 'done' && task.boardId != null) {
+          counts[task.boardId!] = (counts[task.boardId!] ?? 0) + 1;
+        }
+      }
+      if (mounted) setState(() => _pendingCountMap = counts);
+    } catch (_) {
+      // silent fail
     }
   }
 
@@ -177,6 +196,7 @@ class _PlannerPageState extends State<PlannerPage> {
     });
     try {
       await _repository.updateTask(task.copyWith(status: newStatus), _userId);
+      _fetchPendingCounts();
     } catch (_) {
       if (mounted) { _fetchTasks(); _snack('Failed to update status'); }
     }
@@ -466,6 +486,24 @@ class _PlannerPageState extends State<PlannerPage> {
                       ],
                     ),
                   ),
+                  // Pending tasks badge
+                  if ((_pendingCountMap[board.id] ?? 0) > 0)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_pendingCountMap[board.id]}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -1,5 +1,6 @@
 import 'package:atmos_frontend/core/auth/auth_state.dart';
 import 'package:atmos_frontend/features/auth/presentation/widgets/auth_popup.dart';
+import 'package:atmos_frontend/features/planner/data/planner_repository.dart';
 import 'package:atmos_frontend/features/weather/data/weather_api_client.dart';
 import 'package:atmos_frontend/features/weather/data/weather_repository.dart';
 import 'package:atmos_frontend/features/weather/domain/weather_models.dart';
@@ -29,6 +30,10 @@ class _LandingPageState extends State<LandingPage> {
   final WeatherRepository _repository = WeatherRepository();
   final TextEditingController _searchController = TextEditingController();
 
+  // ── Planner badge state ──
+  final PlannerRepository _plannerRepo = PlannerRepository();
+  int _pendingTaskCount = 0;
+
   List<String> _searchHistory = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -42,6 +47,7 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _loadHistory();
+    _fetchPendingTaskCount();
   }
 
   Future<void> _loadHistory() async {
@@ -50,6 +56,18 @@ class _LandingPageState extends State<LandingPage> {
       setState(() {
         _searchHistory = history;
       });
+    }
+  }
+
+  Future<void> _fetchPendingTaskCount() async {
+    if (!AuthState().isSignedIn) return;
+    try {
+      final userId = AuthState().userEmail ?? 'guest';
+      final tasks = await _plannerRepo.getTasks(userId);
+      final pending = tasks.where((t) => t.status != 'done').length;
+      if (mounted) setState(() => _pendingTaskCount = pending);
+    } catch (_) {
+      // silent fail — badge just won't show
     }
   }
 
@@ -248,24 +266,31 @@ class _LandingPageState extends State<LandingPage> {
           elevation: 0,
           selectedFontSize: 12,
           unselectedFontSize: 12,
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today),
+              icon: _pendingTaskCount > 0
+                  ? Badge(
+                      label: Text('$_pendingTaskCount',
+                          style: const TextStyle(color: Colors.white, fontSize: 10)),
+                      backgroundColor: Colors.red,
+                      child: const Icon(Icons.calendar_today),
+                    )
+                  : const Icon(Icons.calendar_today),
               label: 'Planner',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.smart_toy),
               label: 'AI',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.cloud),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.article),
               label: 'News',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.settings),
               label: 'Settings',
             ),
@@ -280,10 +305,12 @@ class _LandingPageState extends State<LandingPage> {
       if (!AuthState().isSignedIn) {
         showSignInPopup(context).then((success) {
           if (!mounted) return;
-          if (success) Navigator.pushNamed(context, '/planner');
+          if (success) {
+            Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
+          }
         });
       } else {
-        Navigator.pushNamed(context, '/planner');
+        Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
       }
       return;
     }
