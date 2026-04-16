@@ -1,5 +1,7 @@
 import 'package:atmos_frontend/core/auth/auth_state.dart';
 import 'package:atmos_frontend/features/auth/presentation/widgets/auth_popup.dart';
+import 'package:atmos_frontend/core/services/news_api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:atmos_frontend/features/weather/data/weather_api_client.dart';
 import 'package:atmos_frontend/features/weather/data/weather_repository.dart';
 import 'package:atmos_frontend/features/weather/domain/weather_models.dart';
@@ -29,6 +31,10 @@ class _LandingPageState extends State<LandingPage> {
   final WeatherRepository _repository = WeatherRepository();
   final TextEditingController _searchController = TextEditingController();
 
+  // ── News notification state ──
+  final NewsApiService _newsApiService = NewsApiService();
+  int _unreadNewsCount = 0;
+
   List<String> _searchHistory = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -42,6 +48,23 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _loadHistory();
+    _checkUnreadNews();
+  }
+
+  Future<void> _checkUnreadNews() async {
+    try {
+      final updates = await _newsApiService.fetchUpdates();
+      final prefs = await SharedPreferences.getInstance();
+      final readIds = prefs.getStringList('readNewsIds') ?? [];
+      final unreadCount = updates.where((u) => !readIds.contains(u.id)).length;
+      if (mounted) {
+        setState(() {
+          _unreadNewsCount = unreadCount;
+        });
+      }
+    } catch (_) {
+      // fail silently
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -248,24 +271,30 @@ class _LandingPageState extends State<LandingPage> {
           elevation: 0,
           selectedFontSize: 12,
           unselectedFontSize: 12,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.calendar_today),
               label: 'Planner',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.smart_toy),
               label: 'AI',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.cloud),
               label: 'Home',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.article),
+              icon: _unreadNewsCount > 0
+                  ? Badge(
+                      backgroundColor: Colors.red,
+                      label: Text('$_unreadNewsCount', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                      child: const Icon(Icons.article),
+                    )
+                  : const Icon(Icons.article),
               label: 'News',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.settings),
               label: 'Settings',
             ),
@@ -305,7 +334,7 @@ class _LandingPageState extends State<LandingPage> {
       return;
     }
     if (index == 3) {
-      Navigator.pushNamed(context, '/news');
+      Navigator.pushNamed(context, '/news').then((_) => _checkUnreadNews());
       return;
     }
     if (index == 4) {
