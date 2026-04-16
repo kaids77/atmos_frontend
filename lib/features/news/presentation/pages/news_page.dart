@@ -1,7 +1,48 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import '../../../../core/services/news_api_service.dart';
 
-class NewsPage extends StatelessWidget {
+class NewsPage extends StatefulWidget {
   const NewsPage({super.key});
+
+  @override
+  State<NewsPage> createState() => _NewsPageState();
+}
+
+class _NewsPageState extends State<NewsPage> {
+  final NewsApiService _apiService = NewsApiService();
+  List<WeatherUpdate> _updates = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUpdates();
+  }
+
+  Future<void> _fetchUpdates() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final data = await _apiService.fetchUpdates();
+      if (mounted) {
+        setState(() {
+          _updates = data.reversed.toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load news updates.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,7 +51,7 @@ class NewsPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFFEEEEEE),
         elevation: 0,
-        automaticallyImplyLeading: false, // Remove default back button
+        automaticallyImplyLeading: false,
         title: Row(
           children: [
             Icon(Icons.cloud_circle, color: const Color(0xFF29B6F6), size: 28),
@@ -26,79 +67,119 @@ class NewsPage extends StatelessWidget {
           ],
         ),
       ),
-      body: SingleChildScrollView(
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: 16, color: Colors.black54),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _fetchUpdates,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF29B6F6),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_updates.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.newspaper, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text(
+              'No news updates yet.',
+              style: TextStyle(fontSize: 16, color: Colors.black54),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchUpdates,
+      color: const Color(0xFF29B6F6),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Back button in body
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFE0E0E0)),
+            // Header Row: Back button + Section Title
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back,
+                      size: 20,
+                      color: Colors.black87,
+                    ),
+                  ),
                 ),
-                child: const Icon(
-                  Icons.arrow_back,
-                  size: 20,
-                  color: Colors.black87,
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Latest Alerts & News',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            // Section Title
-            const Text(
-              'Latest Alerts & News',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+              ],
             ),
             const SizedBox(height: 20),
-
-            // News Card 1
-            _buildNewsCard(
-              avatarColor: const Color(0xFF29B6F6),
-              authorName: 'Atmos',
-              authorRole: 'Admin',
-              date: 'February 13, 2026',
-              alertTitle: 'Severe Weather Alert',
-              description:
-                  'Heavy rainfall expected in the downtown area over the next 3 hours. Please take necessary precautions and avoid low-lying areas.',
-              hasAlert: true,
-            ),
-
-            const SizedBox(height: 16),
-
-            // News Card 2
-            _buildNewsCard(
-              avatarColor: const Color(0xFF29B6F6),
-              authorName: 'Atmos',
-              authorRole: 'Admin',
-              date: 'February 12, 2026',
-              alertTitle: 'Heat Advisory',
-              description:
-                  'Temperatures expected to reach 38°C this weekend. Stay hydrated, limit outdoor activities during peak hours, and check on elderly neighbours.',
-              hasAlert: true,
-            ),
-
-            const SizedBox(height: 16),
-
-            // News Card 3
-            _buildNewsCard(
-              avatarColor: const Color(0xFF29B6F6),
-              authorName: 'Atmos',
-              authorRole: 'Admin',
-              date: 'February 10, 2026',
-              alertTitle: 'Weekly Weather Summary',
-              description:
-                  'This week saw moderate temperatures averaging 26°C with scattered showers on Wednesday. Next week looks clearer with sunny skies expected.',
-              hasAlert: false,
-            ),
+            // Dynamic news cards
+            ..._updates.asMap().entries.map((entry) {
+              final update = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _buildNewsCard(
+                  avatarColor: const Color(0xFF29B6F6),
+                  authorName: 'Atmos',
+                  authorRole: 'Admin',
+                  date: update.date,
+                  alertTitle: update.title,
+                  description: update.description,
+                  imageUrl: update.imageUrl,
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -112,7 +193,7 @@ class NewsPage extends StatelessWidget {
     required String date,
     required String alertTitle,
     required String description,
-    required bool hasAlert,
+    required String imageUrl,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -180,10 +261,9 @@ class NewsPage extends StatelessWidget {
                 // Alert title
                 Row(
                   children: [
-                    if (hasAlert)
-                      const Icon(Icons.warning_amber_rounded,
-                          size: 20, color: Colors.black87),
-                    if (hasAlert) const SizedBox(width: 6),
+                    const Icon(Icons.warning_amber_rounded,
+                        size: 20, color: Colors.black87),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         alertTitle,
@@ -211,59 +291,87 @@ class NewsPage extends StatelessWidget {
             ),
           ),
 
-          // Landscape image placeholder
+          // Image section — show actual image if available, fallback to gradient
           ClipRRect(
             borderRadius: const BorderRadius.only(
               bottomLeft: Radius.circular(16),
               bottomRight: Radius.circular(16),
             ),
+            child: imageUrl.isNotEmpty
+                ? _buildImage(imageUrl)
+                : _buildGradientPlaceholder(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImage(String imageUrl) {
+    if (imageUrl.startsWith('data:image')) {
+      // Base64 image from admin
+      return Image.memory(
+        base64Decode(imageUrl.split(',').last),
+        height: 160,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildGradientPlaceholder(),
+      );
+    } else {
+      // Network URL image
+      return Image.network(
+        imageUrl,
+        height: 160,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildGradientPlaceholder(),
+      );
+    }
+  }
+
+  Widget _buildGradientPlaceholder() {
+    return Container(
+      height: 160,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF1A237E),
+            Color(0xFF4A148C),
+            Color(0xFFE65100),
+            Color(0xFFFF8F00),
+          ],
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: CustomPaint(
+              size: const Size(double.infinity, 80),
+              painter: _MountainPainter(),
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
             child: Container(
-              height: 160,
-              width: double.infinity,
-              decoration: const BoxDecoration(
+              height: 40,
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color(0xFF1A237E),
-                    Color(0xFF4A148C),
-                    Color(0xFFE65100),
-                    Color(0xFFFF8F00),
+                    const Color(0xFF1A237E).withValues(alpha: 0.8),
+                    const Color(0xFF4A148C).withValues(alpha: 0.6),
                   ],
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
                 ),
-              ),
-              child: Stack(
-                children: [
-                  // Mountain silhouette
-                  Positioned(
-                    bottom: 40,
-                    left: 0,
-                    right: 0,
-                    child: CustomPaint(
-                      size: const Size(double.infinity, 80),
-                      painter: _MountainPainter(),
-                    ),
-                  ),
-                  // Water reflection
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            const Color(0xFF1A237E).withValues(alpha: 0.8),
-                            const Color(0xFF4A148C).withValues(alpha: 0.6),
-                          ],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
