@@ -1,10 +1,12 @@
 import 'package:atmos_frontend/core/auth/auth_state.dart';
 import 'package:atmos_frontend/features/auth/presentation/widgets/auth_popup.dart';
-import 'package:atmos_frontend/features/planner/data/planner_repository.dart';
 import 'package:atmos_frontend/features/weather/data/weather_api_client.dart';
 import 'package:atmos_frontend/features/weather/data/weather_repository.dart';
 import 'package:atmos_frontend/features/weather/domain/weather_models.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:atmos_frontend/core/services/news_api_service.dart';
+import 'package:atmos_frontend/features/planner/data/planner_repository.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -30,10 +32,6 @@ class _LandingPageState extends State<LandingPage> {
   final WeatherRepository _repository = WeatherRepository();
   final TextEditingController _searchController = TextEditingController();
 
-  // ── Planner badge state ──
-  final PlannerRepository _plannerRepo = PlannerRepository();
-  int _pendingTaskCount = 0;
-
   List<String> _searchHistory = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -43,11 +41,30 @@ class _LandingPageState extends State<LandingPage> {
   CurrentWeather? _currentWeather;
   List<ForecastDay> _forecast = [];
 
+  // Planner notification state
+  int _pendingTaskCount = 0;
+  final PlannerRepository _plannerRepo = PlannerRepository();
+
+  // News notification state
+  final NewsApiService _newsApiService = NewsApiService();
+  int _unreadNewsCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
     _fetchPendingTaskCount();
+    _checkUnreadNews();
+  }
+
+  Future<void> _checkUnreadNews() async {
+    try {
+      final updates = await _newsApiService.fetchUpdates();
+      final prefs = await SharedPreferences.getInstance();
+      final readIds = prefs.getStringList('readNewsIds') ?? [];
+      final unreadCount = updates.where((u) => !readIds.contains(u.id)).length;
+      if (mounted) setState(() => _unreadNewsCount = unreadCount);
+    } catch (_) {}
   }
 
   Future<void> _loadHistory() async {
@@ -270,9 +287,8 @@ class _LandingPageState extends State<LandingPage> {
             BottomNavigationBarItem(
               icon: _pendingTaskCount > 0
                   ? Badge(
-                      label: Text('$_pendingTaskCount',
-                          style: const TextStyle(color: Colors.white, fontSize: 10)),
                       backgroundColor: Colors.red,
+                      label: Text('$_pendingTaskCount', style: const TextStyle(color: Colors.white, fontSize: 10)),
                       child: const Icon(Icons.calendar_today),
                     )
                   : const Icon(Icons.calendar_today),
@@ -286,8 +302,14 @@ class _LandingPageState extends State<LandingPage> {
               icon: Icon(Icons.cloud),
               label: 'Home',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.article),
+            BottomNavigationBarItem(
+              icon: _unreadNewsCount > 0
+                  ? Badge(
+                      backgroundColor: Colors.red,
+                      label: Text('$_unreadNewsCount', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                      child: const Icon(Icons.article),
+                    )
+                  : const Icon(Icons.article),
               label: 'News',
             ),
             const BottomNavigationBarItem(
@@ -332,7 +354,7 @@ class _LandingPageState extends State<LandingPage> {
       return;
     }
     if (index == 3) {
-      Navigator.pushNamed(context, '/news');
+      Navigator.pushNamed(context, '/news').then((_) => _checkUnreadNews());
       return;
     }
     if (index == 4) {

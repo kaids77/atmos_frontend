@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../../../core/services/news_api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NewsPage extends StatefulWidget {
   const NewsPage({super.key});
@@ -12,6 +13,7 @@ class NewsPage extends StatefulWidget {
 class _NewsPageState extends State<NewsPage> {
   final NewsApiService _apiService = NewsApiService();
   List<WeatherUpdate> _updates = [];
+  Set<String> _readNewsIds = {};
   bool _isLoading = true;
   String? _error;
 
@@ -27,9 +29,12 @@ class _NewsPageState extends State<NewsPage> {
       _error = null;
     });
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final readIds = prefs.getStringList('readNewsIds') ?? [];
       final data = await _apiService.fetchUpdates();
       if (mounted) {
         setState(() {
+          _readNewsIds = readIds.toSet();
           _updates = data.reversed.toList();
           _isLoading = false;
         });
@@ -41,6 +46,20 @@ class _NewsPageState extends State<NewsPage> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _markArticleAsRead(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final readIds = prefs.getStringList('readNewsIds') ?? [];
+    if (!readIds.contains(id)) {
+      readIds.add(id);
+      await prefs.setStringList('readNewsIds', readIds);
+    }
+    if (mounted) {
+      setState(() {
+        _readNewsIds.add(id);
+      });
     }
   }
 
@@ -170,6 +189,8 @@ class _NewsPageState extends State<NewsPage> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _buildNewsCard(
+                  id: update.id,
+                  isRead: _readNewsIds.contains(update.id),
                   avatarColor: const Color(0xFF29B6F6),
                   authorName: 'Atmos',
                   authorRole: 'Admin',
@@ -187,6 +208,8 @@ class _NewsPageState extends State<NewsPage> {
   }
 
   Widget _buildNewsCard({
+    required String id,
+    required bool isRead,
     required Color avatarColor,
     required String authorName,
     required String authorRole,
@@ -287,6 +310,23 @@ class _NewsPageState extends State<NewsPage> {
                     height: 1.4,
                   ),
                 ),
+                if (!isRead) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _markArticleAsRead(id),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Mark as Read', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF29B6F6),
+                        backgroundColor: const Color(0xFFE1F5FE),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
