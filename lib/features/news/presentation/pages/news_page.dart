@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../../../core/services/news_api_service.dart';
+import '../../../../core/auth/auth_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class NewsPage extends StatefulWidget {
@@ -65,35 +66,32 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFEEEEEE),
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            Icon(Icons.cloud_circle, color: const Color(0xFF29B6F6), size: 28),
-            const SizedBox(width: 8),
-            const Text(
-              'Atmos',
-              style: TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-              ),
+    return ListenableBuilder(
+      listenable: AuthState(),
+      builder: (context, _) {
+        final isDark = AuthState().theme == 'Dark Mode';
+        return Scaffold(
+          backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
+          appBar: AppBar(
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFEEEEEE),
+            elevation: 0,
+            automaticallyImplyLeading: false,
+            title: Row(
+              children: [
+                const Icon(Icons.cloud_circle, color: Color(0xFF29B6F6), size: 28),
+                const SizedBox(width: 8),
+                Text('Atmos', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 20)),
+              ],
             ),
-          ],
-        ),
-      ),
-      body: _buildBody(),
+          ),
+          body: _buildBody(isDark),
+        );
+      },
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+  Widget _buildBody(bool isDark) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
       return Center(
@@ -102,22 +100,13 @@ class _NewsPageState extends State<NewsPage> {
           children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(fontSize: 16, color: Colors.black54),
-            ),
+            Text(_error!, style: TextStyle(fontSize: 16, color: isDark ? Colors.white54 : Colors.black54)),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _fetchUpdates,
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF29B6F6),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF29B6F6), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             ),
           ],
         ),
@@ -125,16 +114,13 @@ class _NewsPageState extends State<NewsPage> {
     }
 
     if (_updates.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.newspaper, size: 48, color: Colors.grey),
-            SizedBox(height: 12),
-            Text(
-              'No news updates yet.',
-              style: TextStyle(fontSize: 16, color: Colors.black54),
-            ),
+            const Icon(Icons.newspaper, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text('No news updates yet.', style: TextStyle(fontSize: 16, color: isDark ? Colors.white54 : Colors.black54)),
           ],
         ),
       );
@@ -149,7 +135,6 @@ class _NewsPageState extends State<NewsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Row: Back button + Section Title
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -158,46 +143,29 @@ class _NewsPageState extends State<NewsPage> {
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5),
+                      color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5),
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                      border: Border.all(color: isDark ? const Color(0xFF444444) : const Color(0xFFE0E0E0)),
                     ),
-                    child: const Icon(
-                      Icons.arrow_back,
-                      size: 20,
-                      color: Colors.black87,
-                    ),
+                    child: Icon(Icons.arrow_back, size: 20, color: isDark ? Colors.white70 : Colors.black87),
                   ),
                 ),
                 const SizedBox(width: 16),
-                const Expanded(
-                  child: Text(
-                    'Latest Alerts & News',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
+                Expanded(child: Text('Latest Alerts & News', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87))),
               ],
             ),
             const SizedBox(height: 20),
-            // Dynamic news cards
             ..._updates.asMap().entries.map((entry) {
               final update = entry.value;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _buildNewsCard(
-                  id: update.id,
+                  id: update.id, isDark: isDark,
                   isRead: _readNewsIds.contains(update.id),
                   avatarColor: const Color(0xFF29B6F6),
-                  authorName: 'Atmos',
-                  authorRole: 'Admin',
-                  date: update.date,
-                  alertTitle: update.title,
-                  description: update.description,
-                  imageUrl: update.imageUrl,
+                  authorName: 'Atmos', authorRole: 'Admin',
+                  date: update.date, alertTitle: update.title,
+                  description: update.description, imageUrl: update.imageUrl,
                 ),
               );
             }),
@@ -210,6 +178,7 @@ class _NewsPageState extends State<NewsPage> {
   Widget _buildNewsCard({
     required String id,
     required bool isRead,
+    required bool isDark,
     required Color avatarColor,
     required String authorName,
     required String authorRole,
@@ -220,14 +189,10 @@ class _NewsPageState extends State<NewsPage> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -238,78 +203,31 @@ class _NewsPageState extends State<NewsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Author row
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: avatarColor,
-                      child: const Icon(Icons.cloud, color: Colors.white, size: 20),
-                    ),
+                    CircleAvatar(radius: 20, backgroundColor: avatarColor, child: const Icon(Icons.cloud, color: Colors.white, size: 20)),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          authorName,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          authorRole,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF29B6F6),
-                          ),
-                        ),
+                        Text(authorName, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black87)),
+                        Text(authorRole, style: const TextStyle(fontSize: 13, color: Color(0xFF29B6F6))),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-
-                // Date
-                Text(
-                  date,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF29B6F6),
-                  ),
-                ),
+                Text(date, style: const TextStyle(fontSize: 13, color: Color(0xFF29B6F6))),
                 const SizedBox(height: 10),
-
-                // Alert title
                 Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        size: 20, color: Colors.black87),
+                    Icon(Icons.warning_amber_rounded, size: 20, color: isDark ? Colors.white70 : Colors.black87),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        alertTitle,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
+                    Expanded(child: Text(alertTitle, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87))),
                   ],
                 ),
                 const SizedBox(height: 8),
-
-                // Description
-                Text(
-                  description,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black54,
-                    height: 1.4,
-                  ),
-                ),
+                Text(description, style: TextStyle(fontSize: 14, color: isDark ? Colors.white60 : Colors.black54, height: 1.4)),
                 if (!isRead) ...[
                   const SizedBox(height: 12),
                   Align(
@@ -330,16 +248,9 @@ class _NewsPageState extends State<NewsPage> {
               ],
             ),
           ),
-
-          // Image section — show actual image if available, fallback to gradient
           ClipRRect(
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(16),
-            ),
-            child: imageUrl.isNotEmpty
-                ? _buildImage(imageUrl)
-                : _buildGradientPlaceholder(),
+            borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+            child: imageUrl.isNotEmpty ? _buildImage(imageUrl) : _buildGradientPlaceholder(),
           ),
         ],
       ),

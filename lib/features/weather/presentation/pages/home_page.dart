@@ -238,26 +238,41 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFEEEEEE),
+    return ListenableBuilder(
+      listenable: AuthState(),
+      builder: (context, _) {
+        final isDark = AuthState().theme == 'Dark Mode';
+        final bgColor = isDark ? const Color(0xFF121212) : Colors.white;
+        final appBarColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFEEEEEE);
+
+        return Theme(
+          data: isDark ? ThemeData.dark() : ThemeData.light(),
+          child: Scaffold(
+            backgroundColor: bgColor,
+            resizeToAvoidBottomInset: false,
+            appBar: AppBar(
+              backgroundColor: appBarColor,
         elevation: 0,
         centerTitle: false,
         title: Row(
           children: [
             if (_currentIndex == 2)
-              const Icon(
-                Icons.cloud_circle,
-                color: Color(0xFF29B6F6),
-                size: 28,
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                  ),
+                  const Icon(Icons.cloud_circle, color: Color(0xFF29B6F6), size: 28),
+                ],
               ),
             if (_currentIndex == 2) const SizedBox(width: 8),
             Text(
               _tabTitles[_currentIndex],
-              style: const TextStyle(
-                color: Colors.black87,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
                 fontWeight: FontWeight.bold,
                 fontSize: 20,
               ),
@@ -267,25 +282,25 @@ class _LandingPageState extends State<LandingPage> {
       ),
       body: _buildBody(),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFEEEEEE),
+        decoration: BoxDecoration(
+          color: appBarColor,
           border: Border(
-            top: BorderSide(color: Color(0xFFDDDDDD), width: 0.5),
+            top: BorderSide(color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFDDDDDD), width: 0.5),
           ),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: _onTabTapped,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: const Color(0xFFEEEEEE),
+          backgroundColor: appBarColor,
           selectedItemColor: const Color(0xFF29B6F6),
-          unselectedItemColor: Colors.grey,
+          unselectedItemColor: isDark ? Colors.white54 : Colors.grey,
           elevation: 0,
           selectedFontSize: 12,
           unselectedFontSize: 12,
           items: [
             BottomNavigationBarItem(
-              icon: _pendingTaskCount > 0
+              icon: _pendingTaskCount > 0 && AuthState().notification == 'On' && AuthState().isSignedIn
                   ? Badge(
                       backgroundColor: Colors.red,
                       label: Text('$_pendingTaskCount', style: const TextStyle(color: Colors.white, fontSize: 10)),
@@ -303,7 +318,7 @@ class _LandingPageState extends State<LandingPage> {
               label: 'Home',
             ),
             BottomNavigationBarItem(
-              icon: _unreadNewsCount > 0
+              icon: _unreadNewsCount > 0 && AuthState().notification == 'On' && AuthState().isSignedIn
                   ? Badge(
                       backgroundColor: Colors.red,
                       label: Text('$_unreadNewsCount', style: const TextStyle(color: Colors.white, fontSize: 10)),
@@ -319,6 +334,9 @@ class _LandingPageState extends State<LandingPage> {
           ],
         ),
       ),
+    ),
+  );
+      },
     );
   }
 
@@ -328,23 +346,57 @@ class _LandingPageState extends State<LandingPage> {
         showSignInPopup(context).then((success) {
           if (!mounted) return;
           if (success) {
+            if (!AuthState().acceptedTerms) {
+              Navigator.pushNamed(context, '/terms').then((_) {
+                if (AuthState().acceptedTerms && mounted) {
+                  Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
+                }
+              });
+            } else {
+              Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
+            }
+          }
+        });
+        return;
+      }
+      if (!AuthState().acceptedTerms) {
+        Navigator.pushNamed(context, '/terms').then((_) {
+          if (AuthState().acceptedTerms && mounted) {
             Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
           }
         });
-      } else {
-        Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
+        return;
       }
+      Navigator.pushNamed(context, '/planner').then((_) => _fetchPendingTaskCount());
       return;
     }
     if (index == 1) {
       if (!AuthState().isSignedIn) {
         showSignInPopup(context).then((success) {
           if (!mounted) return;
-          if (success) Navigator.pushNamed(context, '/ai');
+          if (success) {
+            if (!AuthState().acceptedTerms) {
+              Navigator.pushNamed(context, '/terms').then((_) {
+                if (AuthState().acceptedTerms && mounted) {
+                  Navigator.pushNamed(context, '/ai');
+                }
+              });
+            } else {
+              Navigator.pushNamed(context, '/ai');
+            }
+          }
         });
-      } else {
-        Navigator.pushNamed(context, '/ai');
+        return;
       }
+      if (!AuthState().acceptedTerms) {
+        Navigator.pushNamed(context, '/terms').then((_) {
+          if (AuthState().acceptedTerms && mounted) {
+            Navigator.pushNamed(context, '/ai');
+          }
+        });
+        return;
+      }
+      Navigator.pushNamed(context, '/ai');
       return;
     }
     if (index == 2) {
@@ -712,7 +764,7 @@ class _LandingPageState extends State<LandingPage> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '${weather.temp.round()}°C',
+                        '${AuthState().units.startsWith('°F') ? (weather.temp * 9/5 + 32).round() : weather.temp.round()}°${AuthState().units.startsWith('°F') ? 'F' : 'C'}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 48,
@@ -722,7 +774,7 @@ class _LandingPageState extends State<LandingPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Feels like ${weather.feelsLike.round()}°C',
+                        'Feels like ${AuthState().units.startsWith('°F') ? (weather.feelsLike * 9/5 + 32).round() : weather.feelsLike.round()}°${AuthState().units.startsWith('°F') ? 'F' : 'C'}',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 14,
@@ -789,7 +841,7 @@ class _LandingPageState extends State<LandingPage> {
                 child: _infoCard(
                   Icons.thermostat,
                   'Min / Max',
-                  '${weather.tempMin.round()}° / ${weather.tempMax.round()}°',
+                  '${AuthState().units.startsWith('°F') ? (weather.tempMin * 9/5 + 32).round() : weather.tempMin.round()}° / ${AuthState().units.startsWith('°F') ? (weather.tempMax * 9/5 + 32).round() : weather.tempMax.round()}°',
                 ),
               ),
               const SizedBox(width: 12),
@@ -895,7 +947,7 @@ class _LandingPageState extends State<LandingPage> {
           ),
           const Spacer(),
           Text(
-            '${day.tempMax.round()}° / ${day.tempMin.round()}°',
+            '${AuthState().units.startsWith('°F') ? (day.tempMax * 9/5 + 32).round() : day.tempMax.round()}° / ${AuthState().units.startsWith('°F') ? (day.tempMin * 9/5 + 32).round() : day.tempMin.round()}°',
             style: const TextStyle(fontSize: 15, color: Colors.black54),
           ),
         ],
